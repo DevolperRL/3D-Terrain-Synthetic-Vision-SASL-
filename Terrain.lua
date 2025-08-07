@@ -117,6 +117,7 @@ function drawTerrainProbeMap(screenWidth, screenHeight)
     local px = get(acfX)
     local py = get(acfY)
     local pz = get(acfZ)
+    local hdg = get(heading)
 
     local camPos = vec3(px, py + 100, pz)
 
@@ -147,7 +148,6 @@ function drawTerrainProbeMap(screenWidth, screenHeight)
             local offsetX = gx * spacingMeters
             local offsetZ = gz * spacingMeters
 
-            -- Rotate by heading
             local rotatedX = offsetX * cosH - offsetZ * sinH
             local rotatedZ = offsetX * sinH + offsetZ * cosH
 
