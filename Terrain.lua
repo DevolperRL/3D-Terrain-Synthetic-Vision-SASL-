@@ -8,33 +8,33 @@ local acfY = globalPropertyf("sim/flightmodel/position/local_y")
 local acfZ = globalPropertyf("sim/flightmodel/position/local_z")
 local heading = globalPropertyf("sim/cockpit2/gauges/indicators/heading_AHARS_deg_mag_pilot")
 
-local function vec3(x,y,z) return {x=x,y=y,z=z} end
-local function vec3_sub(a,b) return {x=a.x-b.x, y=a.y-b.y, z=a.z-b.z} end
-local function vec3_add(a,b) return {x=a.x+b.x, y=a.y+b.y, z=a.z+b.z} end
-local function vec3_mul(a,s) return {x=a.x*s, y=a.y*s, z=a.z*s} end
-local function vec3_dot(a,b) return a.x*b.x + a.y*b.y + a.z*b.z end
-local function vec3_cross(a,b)
+function vec3(x,y,z) return {x=x,y=y,z=z} end
+function vec3_sub(a,b) return {x=a.x-b.x, y=a.y-b.y, z=a.z-b.z} end
+function vec3_add(a,b) return {x=a.x+b.x, y=a.y+b.y, z=a.z+b.z} end
+function vec3_mul(a,s) return {x=a.x*s, y=a.y*s, z=a.z*s} end
+function vec3_dot(a,b) return a.x*b.x + a.y*b.y + a.z*b.z end
+function vec3_cross(a,b)
     return {
         x = a.y*b.z - a.z*b.y,
         y = a.z*b.x - a.x*b.z,
         z = a.x*b.y - a.y*b.x
     }
 end
-local function vec3_length(v) return math.sqrt(v.x*v.x + v.y*v.y + v.z*v.z) end
-local function vec3_normalize(v)
+function vec3_length(v) return math.sqrt(v.x*v.x + v.y*v.y + v.z*v.z) end
+function vec3_normalize(v)
     local len = vec3_length(v)
     if len == 0 then return vec3(0,0,0) end
     return vec3_mul(v, 1/len)
 end
 
-local function lookAt(pos, target, up)
+function lookAt(pos, target, up)
     local forward = vec3_normalize(vec3_sub(target, pos))
     local right = vec3_normalize(vec3_cross(forward, up))
     local camUp = vec3_cross(right, forward)
     return right, camUp, forward
 end
 
-local function projectPoint(worldPos, camPos, camRight, camUp, camForward, screenWidth, screenHeight, fovDeg, nearPlane)
+function projectPoint(worldPos, camPos, camRight, camUp, camForward, screenWidth, screenHeight, fovDeg, nearPlane)
     local rel = vec3_sub(worldPos, camPos)
 
     local x = vec3_dot(rel, camRight)
@@ -54,7 +54,7 @@ local function projectPoint(worldPos, camPos, camRight, camUp, camForward, scree
     return px, screenHeight+py
 end
 
-local function lerpColor(c1, c2, t)
+function lerpColor(c1, c2, t)
     return {
         c1[1] + (c2[1] - c1[1]) * t,
         c1[2] + (c2[2] - c1[2]) * t,
@@ -63,7 +63,7 @@ local function lerpColor(c1, c2, t)
     }
 end
 
-local function elevationToColor(elev)
+function elevationToColor(elev)
     local maxElev = 3000
     local t = math.min(math.max(elev / maxElev, 0), 1)
 
@@ -87,7 +87,7 @@ local function elevationToColor(elev)
     return lerpColor(colors[index], colors[index + 1], frac)
 end
 
-local function computeShade(p1, p2, p3)
+function computeShade(p1, p2, p3)
     local v1 = {p2[1] - p1[1], p2[2] - p1[2], p2[3] - p1[3]}
     local v2 = {p3[1] - p1[1], p3[2] - p1[2], p3[3] - p1[3]}
 
