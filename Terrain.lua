@@ -1,4 +1,4 @@
-local gridSize = 150                 -- Change this for the Distance
+local gridSize = 150               -- Change this for the Distance
 local spacingMeters = 100          -- Change this for the size of hte Triangles
 
 local heightScale = 1.3          -- Change this for the Height of the terrain, 1.3 should be right value
@@ -115,9 +115,6 @@ function computeShade(p1, p2, p3)
     return math.max(0.3, dot)
 end
 
-local lastTerrainDraw = 0
-local terrainCache = {}
-
 function drawTerrainProbeMap(screenWidth, screenHeight)
     local px = get(acfX)
     local py = get(acfY)
@@ -125,7 +122,7 @@ function drawTerrainProbeMap(screenWidth, screenHeight)
     local hdg = math.rad(get(heading))
     local alt = get(height)
 
-    local camPos = vec3(px, py + alt/5, pz)
+    local camPos = vec3(px, py + alt / 5, pz)
     local forwardVec = vec3(math.sin(-hdg + math.pi), 0, math.cos(-hdg + math.pi))
     local camTarget = vec3_add(camPos, forwardVec)
     local camUp = vec3(0, 1, 0)
@@ -134,93 +131,81 @@ function drawTerrainProbeMap(screenWidth, screenHeight)
     local cosH = math.cos(-hdg)
     local sinH = math.sin(-hdg)
 
-    local pointsGrid = {}
+    local function getRotatedWorldCoords(gx, gz)
+        local offsetX = gx * spacingMeters
+        local offsetZ = gz * spacingMeters
+        local rotatedX = offsetX * cosH - offsetZ * sinH
+        local rotatedZ = offsetX * sinH + offsetZ * cosH
+        return px + rotatedX, pz + rotatedZ
+    end
+
+    local function isInView(x, z)
+        local dx = x - camPos.x
+        local dz = z - camPos.z
+        local dot = dx * forwardVec.x + dz * forwardVec.z
+        return dot > 0 
+    end
+
+    local heightGrid = {}
     local validGrid = {}
     local wetGrid = {}
 
     for gz = -gridSize / 2, gridSize / 2 do
-        pointsGrid[gz] = {}
+        heightGrid[gz] = {}
         validGrid[gz] = {}
         wetGrid[gz] = {}
-
         for gx = -gridSize / 2, gridSize / 2 do
-            local offsetX = gx * spacingMeters
-            local offsetZ = gz * spacingMeters
+            local worldX, worldZ = getRotatedWorldCoords(gx, gz)
 
-            local rotatedX = offsetX * cosH - offsetZ * sinH
-            local rotatedZ = offsetX * sinH + offsetZ * cosH
-
-            local worldX = px + rotatedX
-            local worldZ = pz + rotatedZ
-            local worldY = py + 10000
-
-            local result, locX, locY, locZ, _, _, _, _, _, _, isWet = sasl.probeTerrain(worldX, worldY, worldZ)
-            validGrid[gz][gx] = (result == 0)
-            wetGrid[gz][gx] = (isWet == 1)
-            pointsGrid[gz][gx] = locY
+            if isInView(worldX, worldZ) then
+                local worldY = py + 10000
+                local result, _, locY, _, _, _, _, _, _, _, isWet = sasl.probeTerrain(worldX, worldY, worldZ)
+                validGrid[gz][gx] = (result == 0)
+                heightGrid[gz][gx] = locY * heightScale
+                wetGrid[gz][gx] = (isWet == 1)
+            else
+                validGrid[gz][gx] = false
+            end
         end
     end
 
     for gz = -gridSize / 2, gridSize / 2 - 1 do
         for gx = -gridSize / 2, gridSize / 2 - 1 do
-            if validGrid[gz][gx] and validGrid[gz][gx+1] and validGrid[gz+1][gx] and validGrid[gz+1][gx+1] then
-                local elevTL = pointsGrid[gz][gx] * heightScale
-                local elevTR = pointsGrid[gz][gx+1] * heightScale
-                local elevBR = pointsGrid[gz+1][gx+1] * heightScale
-                local elevBL = pointsGrid[gz+1][gx] * heightScale
+            if validGrid[gz][gx] and validGrid[gz][gx + 1] and validGrid[gz + 1][gx] and validGrid[gz + 1][gx + 1] then
+                local elevTL = heightGrid[gz][gx]
+                local elevTR = heightGrid[gz][gx + 1]
+                local elevBR = heightGrid[gz + 1][gx + 1]
+                local elevBL = heightGrid[gz + 1][gx]
 
-                local function rotatedWorld(gx, gz, elev)
-                    local offsetX = gx * spacingMeters
-                    local offsetZ = gz * spacingMeters
-                    local rotatedX = offsetX * cosH - offsetZ * sinH
-                    local rotatedZ = offsetX * sinH + offsetZ * cosH
-                    return vec3(px + rotatedX, elev, pz + rotatedZ)
+                local function makeWorldPoint(gx, gz, elev)
+                    local worldX, worldZ = getRotatedWorldCoords(gx, gz)
+                    return vec3(worldX, elev, worldZ)
                 end
 
-                local worldTL = rotatedWorld(gx, gz, elevTL)
-                local worldTR = rotatedWorld(gx + 1, gz, elevTR)
-                local worldBR = rotatedWorld(gx + 1, gz + 1, elevBR)
-                local worldBL = rotatedWorld(gx, gz + 1, elevBL)
+                local worldTL = makeWorldPoint(gx, gz, elevTL)
+                local worldTR = makeWorldPoint(gx + 1, gz, elevTR)
+                local worldBR = makeWorldPoint(gx + 1, gz + 1, elevBR)
+                local worldBL = makeWorldPoint(gx, gz + 1, elevBL)
 
-                local sxTL, syTL = projectPoint(worldTL, camPos, camRight, camUp, camForward, screenWidth, screenHeight, 60, 0.1)
-                local sxTR, syTR = projectPoint(worldTR, camPos, camRight, camUp, camForward, screenWidth, screenHeight, 60, 0.1)
-                local sxBR, syBR = projectPoint(worldBR, camPos, camRight, camUp, camForward, screenWidth, screenHeight, 60, 0.1)
-                local sxBL, syBL = projectPoint(worldBL, camPos, camRight, camUp, camForward, screenWidth, screenHeight, 60, 0.1)
+                if isInView(worldTL.x, worldTL.z) or isInView(worldBR.x, worldBR.z) then
+                    local sxTL, syTL = projectPoint(worldTL, camPos, camRight, camUp, camForward, screenWidth, screenHeight, 60, 0.1)
+                    local sxTR, syTR = projectPoint(worldTR, camPos, camRight, camUp, camForward, screenWidth, screenHeight, 60, 0.1)
+                    local sxBR, syBR = projectPoint(worldBR, camPos, camRight, camUp, camForward, screenWidth, screenHeight, 60, 0.1)
+                    local sxBL, syBL = projectPoint(worldBL, camPos, camRight, camUp, camForward, screenWidth, screenHeight, 60, 0.1)
 
-                if sxTL and sxTR and sxBR and sxBL then
-                    local tri1 = {sxTL, syTL, sxTR, syTR, sxBR, syBR}
-                    local tri2 = {sxTL, syTL, sxBR, syBR, sxBL, syBL}
+                    if sxTL and sxTR and sxBR and sxBL then
+                        local avgElev = (elevTL + elevTR + elevBR + elevBL) / 4
+                        local isWet = wetGrid[gz][gx] and wetGrid[gz][gx + 1] and wetGrid[gz + 1][gx] and wetGrid[gz + 1][gx + 1]
 
-                    local avgElev1 = (elevTL + elevTR + elevBR) / 3
-                    local avgElev2 = (elevTL + elevBR + elevBL) / 3
+                        local color = isWet and {0.2, 0.5, 1.0, 1.0} or elevationToColor(avgElev)
 
-                    local baseColor1 = (wetGrid[gz][gx] and wetGrid[gz][gx+1] and wetGrid[gz+1][gx+1])
-                        and {0.2, 0.5, 1.0, 1.0}
-                        or elevationToColor(avgElev1)
-
-                    local baseColor2 = (wetGrid[gz][gx] and wetGrid[gz+1][gx+1] and wetGrid[gz+1][gx])
-                        and {0.2, 0.5, 1.0, 1.0}
-                        or elevationToColor(avgElev2)
-
-                    local shade1 = computeShade({sxTL, syTL, elevTL}, {sxTR, syTR, elevTR}, {sxBR, syBR, elevBR})
-                    local shade2 = computeShade({sxTL, syTL, elevTL}, {sxBR, syBR, elevBR}, {sxBL, syBL, elevBL})
-
-                    local color1 = {
-                        baseColor1[1] * shade1,
-                        baseColor1[2] * shade1,
-                        baseColor1[3] * shade1,
-                        baseColor1[4]
-                    }
-
-                    local color2 = {
-                        baseColor2[1] * shade2,
-                        baseColor2[2] * shade2,
-                        baseColor2[3] * shade2,
-                        baseColor2[4]
-                    }
-
-                    sasl.gl.drawConvexPolygon(tri1, true, 1, color1)
-                    sasl.gl.drawConvexPolygon(tri2, true, 1, color2)
+                        sasl.gl.drawConvexPolygon({
+                            sxTL, syTL,
+                            sxTR, syTR,
+                            sxBR, syBR,
+                            sxBL, syBL
+                        }, true, 1, color)
+                    end
                 end
             end
         end
