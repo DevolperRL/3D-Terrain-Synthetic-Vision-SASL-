@@ -7,7 +7,7 @@ local acfX = globalPropertyf("sim/flightmodel/position/local_x")
 local acfY = globalPropertyf("sim/flightmodel/position/local_y")
 local acfZ = globalPropertyf("sim/flightmodel/position/local_z")
 local height = globalProperty("sim/flightmodel2/position/ellipsoid_height")
---local heading = globalPropertyf("sim/cockpit2/gauges/indicators/heading_AHARS_deg_mag_pilot")
+local heading = globalPropertyf("sim/cockpit2/gauges/indicators/heading_AHARS_deg_mag_pilot")
 
 function vec3(x,y,z) return {x=x,y=y,z=z} end
 function vec3_sub(a,b) return {x=a.x-b.x, y=a.y-b.y, z=a.z-b.z} end
@@ -167,7 +167,7 @@ function drawTerrainProbeMap(screenWidth, screenHeight)
                     wetGrid[gz][gx] = (isWet == 1)
                 else
                     validGrid[gz][gx] = false
-                    heightGrid[gz][gx] = 0 -- Or some fallback value
+                    heightGrid[gz][gx] = 0
                     wetGrid[gz][gx] = false
                 end
 
