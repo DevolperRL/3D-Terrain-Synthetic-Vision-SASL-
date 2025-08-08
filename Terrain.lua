@@ -1,4 +1,4 @@
-local gridSize = 100               -- Change this for the Distance
+local gridSize = 150                 -- Change this for the Distance
 local spacingMeters = 100          -- Change this for the size of hte Triangles
 
 local heightScale = 1.3          -- Change this for the Height of the terrain, 1.3 should be right value
@@ -6,6 +6,7 @@ local heightScale = 1.3          -- Change this for the Height of the terrain, 1
 local acfX = globalPropertyf("sim/flightmodel/position/local_x")
 local acfY = globalPropertyf("sim/flightmodel/position/local_y")
 local acfZ = globalPropertyf("sim/flightmodel/position/local_z")
+local height = globalProperty("sim/flightmodel2/position/ellipsoid_height")
 local heading = globalPropertyf("sim/cockpit2/gauges/indicators/heading_AHARS_deg_mag_pilot")
 
 function vec3(x,y,z) return {x=x,y=y,z=z} end
@@ -68,11 +69,12 @@ function elevationToColor(elev)
     local t = math.min(math.max(elev / maxElev, 0), 1)
 
     local colors = {
-        {0.1, 0.6, 0.1, 1.0}, -- green low
-        {1.0, 1.0, 0.0, 1.0}, -- yellow
-        {1.0, 0.65, 0.0, 1.0}, -- orange
-        {1.0, 0.0, 0.0, 1.0}, -- red
-        {0.1, 0.1, 0.1, 1.0}, -- black high
+        {0.0, 0.5, 0.0, 1.0},   -- dark green (low)
+        {0.0, 1.0, 0.0, 1.0},   -- bright green
+        {1.0, 1.0, 0.0, 1.0},   -- bright yellow
+        {1.0, 0.5, 0.0, 1.0},   -- orange
+        {1.0, 0.0, 0.0, 1.0},   -- bright red (high)
+        {1.0, 1.0, 1.0, 1.0},   -- white (extreme high)
     }
 
     local n = #colors - 1
@@ -113,20 +115,24 @@ function computeShade(p1, p2, p3)
     return math.max(0.3, dot)
 end
 
+local lastTerrainDraw = 0
+local terrainCache = {}
+
 function drawTerrainProbeMap(screenWidth, screenHeight)
     local px = get(acfX)
     local py = get(acfY)
     local pz = get(acfZ)
-    local hdg = get(heading)
+    local hdg = math.rad(get(heading))
+    local alt = get(height)
 
-    local camPos = vec3(px, py + 100, pz)
-
-    local forwardVec = vec3(math.sin(hdg), 0, math.cos(hdg))
+    local camPos = vec3(px, py + alt/5, pz)
+    local forwardVec = vec3(math.sin(-hdg + math.pi), 0, math.cos(-hdg + math.pi))
     local camTarget = vec3_add(camPos, forwardVec)
-
     local camUp = vec3(0, 1, 0)
-
     local camRight, camUp, camForward = lookAt(camPos, camTarget, camUp)
+
+    local cosH = math.cos(-hdg)
+    local sinH = math.sin(-hdg)
 
     local pointsGrid = {}
     local validGrid = {}
@@ -136,15 +142,8 @@ function drawTerrainProbeMap(screenWidth, screenHeight)
         pointsGrid[gz] = {}
         validGrid[gz] = {}
         wetGrid[gz] = {}
+
         for gx = -gridSize / 2, gridSize / 2 do
-            local hdg2 = math.rad(hdg)
-
-            local sinH = math.sin(hdg)
-            local cosH = math.cos(hdg)
-
-            --local worldX = px + gx * spacingMeters
-            --local worldZ = pz + gz * spacingMeters
-
             local offsetX = gx * spacingMeters
             local offsetZ = gz * spacingMeters
 
@@ -153,11 +152,9 @@ function drawTerrainProbeMap(screenWidth, screenHeight)
 
             local worldX = px + rotatedX
             local worldZ = pz + rotatedZ
-
             local worldY = py + 10000
 
             local result, locX, locY, locZ, _, _, _, _, _, _, isWet = sasl.probeTerrain(worldX, worldY, worldZ)
-
             validGrid[gz][gx] = (result == 0)
             wetGrid[gz][gx] = (isWet == 1)
             pointsGrid[gz][gx] = locY
@@ -172,10 +169,18 @@ function drawTerrainProbeMap(screenWidth, screenHeight)
                 local elevBR = pointsGrid[gz+1][gx+1] * heightScale
                 local elevBL = pointsGrid[gz+1][gx] * heightScale
 
-                local worldTL = vec3(px + gx * spacingMeters, elevTL, pz + gz * spacingMeters)
-                local worldTR = vec3(px + (gx+1) * spacingMeters, elevTR, pz + gz * spacingMeters)
-                local worldBR = vec3(px + (gx+1) * spacingMeters, elevBR, pz + (gz+1) * spacingMeters)
-                local worldBL = vec3(px + gx * spacingMeters, elevBL, pz + (gz+1) * spacingMeters)
+                local function rotatedWorld(gx, gz, elev)
+                    local offsetX = gx * spacingMeters
+                    local offsetZ = gz * spacingMeters
+                    local rotatedX = offsetX * cosH - offsetZ * sinH
+                    local rotatedZ = offsetX * sinH + offsetZ * cosH
+                    return vec3(px + rotatedX, elev, pz + rotatedZ)
+                end
+
+                local worldTL = rotatedWorld(gx, gz, elevTL)
+                local worldTR = rotatedWorld(gx + 1, gz, elevTR)
+                local worldBR = rotatedWorld(gx + 1, gz + 1, elevBR)
+                local worldBL = rotatedWorld(gx, gz + 1, elevBL)
 
                 local sxTL, syTL = projectPoint(worldTL, camPos, camRight, camUp, camForward, screenWidth, screenHeight, 60, 0.1)
                 local sxTR, syTR = projectPoint(worldTR, camPos, camRight, camUp, camForward, screenWidth, screenHeight, 60, 0.1)
@@ -183,42 +188,39 @@ function drawTerrainProbeMap(screenWidth, screenHeight)
                 local sxBL, syBL = projectPoint(worldBL, camPos, camRight, camUp, camForward, screenWidth, screenHeight, 60, 0.1)
 
                 if sxTL and sxTR and sxBR and sxBL then
-                    local tri1Points = {sxTL, syTL, sxTR, syTR, sxBR, syBR}
-                    local shade1 = computeShade(
-                        {sxTL, syTL, elevTL},
-                        {sxTR, syTR, elevTR},
-                        {sxBR, syBR, elevBR}
-                    )
+                    local tri1 = {sxTL, syTL, sxTR, syTR, sxBR, syBR}
+                    local tri2 = {sxTL, syTL, sxBR, syBR, sxBL, syBL}
+
                     local avgElev1 = (elevTL + elevTR + elevBR) / 3
-                    local baseColor1 = (wetGrid[gz][gx] and wetGrid[gz][gx+1] and wetGrid[gz+1][gx+1]) and {0.2, 0.5, 1.0, 1.0} or elevationToColor(avgElev1)
+                    local avgElev2 = (elevTL + elevBR + elevBL) / 3
+
+                    local baseColor1 = (wetGrid[gz][gx] and wetGrid[gz][gx+1] and wetGrid[gz+1][gx+1])
+                        and {0.2, 0.5, 1.0, 1.0}
+                        or elevationToColor(avgElev1)
+
+                    local baseColor2 = (wetGrid[gz][gx] and wetGrid[gz+1][gx+1] and wetGrid[gz+1][gx])
+                        and {0.2, 0.5, 1.0, 1.0}
+                        or elevationToColor(avgElev2)
+
+                    local shade1 = computeShade({sxTL, syTL, elevTL}, {sxTR, syTR, elevTR}, {sxBR, syBR, elevBR})
+                    local shade2 = computeShade({sxTL, syTL, elevTL}, {sxBR, syBR, elevBR}, {sxBL, syBL, elevBL})
+
                     local color1 = {
                         baseColor1[1] * shade1,
                         baseColor1[2] * shade1,
                         baseColor1[3] * shade1,
                         baseColor1[4]
                     }
-                    sasl.gl.drawConvexPolygon(tri1Points, true, 1, color1)
 
-                    local tri2Points = {sxTL, syTL, sxBR, syBR, sxBL, syBL}
-                    local shade2 = computeShade(
-                        {sxTL, syTL, elevTL},
-                        {sxBR, syBR, elevBR},
-                        {sxBL, syBL, elevBL}
-                    )
-                    local avgElev2 = (elevTL + elevBR + elevBL) / 3
-                    local baseColor2 = (wetGrid[gz][gx] and wetGrid[gz+1][gx+1] and wetGrid[gz+1][gx]) and {0.2, 0.5, 1.0, 1.0} or elevationToColor(avgElev2)
                     local color2 = {
                         baseColor2[1] * shade2,
                         baseColor2[2] * shade2,
                         baseColor2[3] * shade2,
                         baseColor2[4]
                     }
-                    sasl.gl.drawConvexPolygon(tri2Points, true, 1, color2)
 
-
-                    --Adding this will atleast eat 1-2 fps, Will create black lines
-                    --sasl.gl.drawConvexPolygon(tri1Points, false, 1, {0, 0, 0, 0.1})
-                    --sasl.gl.drawConvexPolygon(tri2Points, false, 1, {0, 0, 0, 0.1})
+                    sasl.gl.drawConvexPolygon(tri1, true, 1, color1)
+                    sasl.gl.drawConvexPolygon(tri2, true, 1, color2)
                 end
             end
         end
