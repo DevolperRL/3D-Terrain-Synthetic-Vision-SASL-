@@ -1,4 +1,4 @@
-local gridSize = 150               -- Change this for the Distance
+local gridSize = 150                 -- Change this for the Distance
 local spacingMeters = 100          -- Change this for the size of hte Triangles
 
 local heightScale = 1.3          -- Change this for the Height of the terrain, 1.3 should be right value
@@ -7,7 +7,7 @@ local acfX = globalPropertyf("sim/flightmodel/position/local_x")
 local acfY = globalPropertyf("sim/flightmodel/position/local_y")
 local acfZ = globalPropertyf("sim/flightmodel/position/local_z")
 local height = globalProperty("sim/flightmodel2/position/ellipsoid_height")
-local heading = globalPropertyf("sim/cockpit2/gauges/indicators/heading_AHARS_deg_mag_pilot")
+--local heading = globalPropertyf("sim/cockpit2/gauges/indicators/heading_AHARS_deg_mag_pilot")
 
 function vec3(x,y,z) return {x=x,y=y,z=z} end
 function vec3_sub(a,b) return {x=a.x-b.x, y=a.y-b.y, z=a.z-b.z} end
@@ -160,9 +160,17 @@ function drawTerrainProbeMap(screenWidth, screenHeight)
             if isInView(worldX, worldZ) then
                 local worldY = py + 10000
                 local result, _, locY, _, _, _, _, _, _, _, isWet = sasl.probeTerrain(worldX, worldY, worldZ)
-                validGrid[gz][gx] = (result == 0)
-                heightGrid[gz][gx] = locY * heightScale
-                wetGrid[gz][gx] = (isWet == 1)
+
+                if result == 0 and locY then
+                    validGrid[gz][gx] = true
+                    heightGrid[gz][gx] = locY * heightScale
+                    wetGrid[gz][gx] = (isWet == 1)
+                else
+                    validGrid[gz][gx] = false
+                    heightGrid[gz][gx] = 0 -- Or some fallback value
+                    wetGrid[gz][gx] = false
+                end
+
             else
                 validGrid[gz][gx] = false
             end
